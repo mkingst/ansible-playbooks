@@ -1,0 +1,13 @@
+- hosts: demogroup
+  remote_user: admin
+  collections:
+    - nginxinc.nginx_core
+  tasks:
+    - name: Install NGINX Plus
+      include_role:
+        name: nginx
+      vars:
+        nginx_type: plus
+        nginx_license:
+          certificate: nginx-repo.crt
+          key: nginx-repo.key

@@ -1,0 +1,43 @@
+ 
+- hosts: nginxplus
+  remote_user: admin 
+  become: true
+  roles:
+    - role: nginxinc.nginx
+  tasks:
+    - name: wait for ssh to come up
+      wait_for_connection:
+        delay: 5
+        timeout: 90
+  vars:
+    nginx_type: plus
+    nginx_rest_api_enable: true
+    nginx_rest_api_port: 4321
+    nginx_rest_api_write: true
+    nginx_license:
+      certificate: "nginx-repo.crt"
+      key: "nginx-repo.key"
+    nginx_modules:
+      - njs
+
+- hosts: nginxplus
+  remote_user: admin 
+  become: true
+  vars_files:
+    - keys.yml
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - python2.7
+        state: latest
+    - name: retrieve the controller installer from the NGINX Controller
+      get_url:
+        dest: /tmp/install.sh
+        mode: 0750
+        url: https://{{ controller.hostname }}/install/controller-agent
+        validate_certs: no
+    - name: Install the controller agent
+      shell:
+        cmd: "API_KEY='{{ controller.api_key }}' sh /tmp/install.sh -y"
+        creates: /lib/systemd/system/controller-agent.service

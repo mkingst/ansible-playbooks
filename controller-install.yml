@@ -1,0 +1,118 @@
+- hosts: demogroup
+  remote_user: admin #user on the ec2 instance
+  become: yes
+  vars_files:
+    - keys.yml
+  tasks:
+    - name: wait for ssh to come up
+      wait_for_connection:
+        delay: 5
+        timeout: 90
+
+    - name: Install Required Packages
+      apt:
+        name:
+          - socat
+          - conntrack
+          - jq
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - ebtables
+        state: latest
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Checking for existing controller install on host
+      stat:
+        path: /opt/nginx-controller/files/version.txt
+      register: version_file
+
+    - name: Check which version (if any) is installed, reporting major.minor
+      block:
+      - name: get file contents
+        command: "cat {{ version_file.stat.path }}"
+        register: version
+
+      - name: Get/set fact for installed controller version
+        set_fact:
+          controller_installed_version: "{{ version.stdout | regex_replace( '^version: ([0-9]).([0-9]).([0-9])$', '\\1.\\2') }}"
+          cacheable: yes
+      when: version_file.stat.exists
+
+    - name: get/set fact for installed controller version
+      set_fact:
+        controller_installed_version: "0.0"
+        cacheable: yes
+      when: not version_file.stat.exists
+
+
+    - name: Installing Controller
+      block:
+        - name: Copy this installer to the system
+          become: no
+          unarchive:
+            src: "{{ controller.install_package }}"
+            dest: "/home/{{ ansible_ssh_user }}/"
+            creates: "/home/{{ ansible_ssh_user }}/controller-installer"
+
+        - name: Execute the installer
+          become: no
+          command:
+            chdir: "/home/{{ ansible_ssh_user }}/controller-installer"
+            cmd: |
+              ./install.sh -y -n --smtp-host localhost --smtp-port 25 --smtp-authentication false --smtp-use-tls false
+              --noreply-address noreply@f5.com --admin-email {{ controller.admin_email }}
+              --admin-password {{ controller.admin_password }}
+              --fqdn {{ controller.hostname }}
+              --auto-install-docker --self-signed-cert --organization-name 'F5 - NGINX'
+              --admin-firstname {{ controller.admin_firstname }}
+              --admin-lastname {{ controller.admin_lastname }}
+              --tsdb-volume-type local
+              --configdb-volume-type local
+            register: result
+            debug:
+              var: result
+
+      when: not version_file.stat.exists
+
+    - name: Upgrading Controller
+      block:
+        - name: remove old install files
+          file:
+            path: "/home/{{ ansible_ssh_user }}/controller-installer"
+            state: absent
+
+        - name: Copy this installer to the system
+          become: no
+          unarchive:
+            src: "{{ controller.install_package }}"
+            dest: "/home/{{ ansible_ssh_user }}/"
+            creates: "/home/{{ ansible_ssh_user }}/controller-installer"
+
+        - name: Save the agent.conf
+          command:
+            cmd: cat /etc/controller-agent/agent.conf
+          register: agent_config
+          ignore_errors: true
+
+        - name: Execute the installer
+          become: no
+          command:
+            chdir: "/home/{{ ansible_ssh_user }}/controller-installer"
+            cmd: ./update.sh -c
+
+        - name: Restore the agent.conf
+          copy:
+            dest: /etc/controller-agent/agent.conf
+            content: agent_config.stdout
+          when: agent_config.stdout != ""
+
+        - name: debug
+          debug:
+            msg: agent_config
+
+      when:
+        - controller_installed_version != '0.0'
+        - controller_installed_version != controller.version
