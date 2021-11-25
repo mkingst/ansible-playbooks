@@ -1,0 +1,25 @@
+AWS_ACCESS_KEY_ID: 
+AWS_SECRET_ACCESS_KEY:
+AWS_REGION: 
+AWS_SESSION_TOKEN: 
+nginx_debian_dependencies: [
+  'apt-transport-https', 'ca-certificates',]
+nginx_default_signing_key_pgp: https://nginx.org/keys/nginx_signing.key
+nginx_license:
+  certificate: nginx-repo.crt
+  key: nginx-repo.key
+nginx_plus_default_repository_debian: "deb [arch={{ (ansible_facts['architecture'] == 'aarch64') | ternary('arm64', 'amd64') }}] https://pkgs.nginx.com/plus/{{ ansible_facts['distribution'] | lower }} {{ ansible_facts['distribution_release'] }} nginx-plus"
+nginx_manage_repo: true
+nginx_state: present
+nginx_start: true
+controller:
+  version: "3.19.2"
+  api_version: "v1"
+  hostname: 
+  install_package: apim-controller-installer-3.19.2.tar.gz
+  license_file: license.txt
+  admin_email: admin@nginx.com
+  admin_password: 
+  admin_firstname: Michael
+  admin_lastname: Collins
+  api_key: ''
