@@ -1,0 +1,173 @@
+#Before running, place the cert and key into docker-nginx-controller/debian/nap (and/or no-nap)
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+    - keys.yml
+  vars:
+    DEFAULT_VPC_SUBNET: subnet-3ecb9f5a
+    BASE_AMI: ami-0a419c6416bb69b9c #debian9Stretch
+    AWS_ZONE: eu-west-1b
+    SECURITY_GROUP: sg-00cacfc118d60aec3
+  tasks:
+
+    - name: Create AWS key pair using Ansibles key
+      ec2_key:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        security_token: "{{ AWS_SESSION_TOKEN }}"
+        ec2_region: "{{ AWS_REGION }}"
+        name: ansible_keypair
+        key_material: "{{ lookup('file', '/home/ansible/.ssh/id_rsa.pub') }}"
+
+    - name: Provision instance
+      ec2:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        security_token: "{{ AWS_SESSION_TOKEN }}"
+        ec2_region: "{{ AWS_REGION }}"
+        zone: "{{ AWS_ZONE }}"
+        instance_type: t2.xlarge
+        group_id: "{{ SECURITY_GROUP }}"
+        keypair: ansible_keypair
+        image: "{{ BASE_AMI }}"
+        assign_public_ip: yes
+        volumes:
+        - device_name: xvda
+          volume_type: gp2
+          volume_size: "80"
+          delete_on_termination: true
+        vpc_subnet_id: "{{ DEFAULT_VPC_SUBNET }}"
+        wait: true
+        count: 1
+        instance_tags:
+          Owner: m.kingston@f5.com
+          Name: nginx-plus-docker-debian9
+      register: ec2
+
+    - name: add public IP of new host to inventory of ansible host
+      add_host:
+        hostname: "{{ item.public_ip }}"
+        groupname: nginxgroup
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+      loop: "{{ ec2.instances }}"
+
+- hosts: nginxgroup
+  remote_user: admin #user on the ec2 instance
+  become: yes
+  gather_facts: no #we need to wait for ssh
+  vars_files:
+    - keys.yml
+  tasks:
+
+  - name: wait for ssh to come up
+    wait_for_connection:
+      delay: 5
+      timeout: 90
+ 
+  - name: Remove any OS docker packages
+    apt:
+      name:
+        - docker
+        - docker-engine
+        - docker.io
+        - containerd
+        - runc
+      state: absent
+
+  - name: Install pre-requisite packages
+    apt:
+      name:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg-agent
+        - software-properties-common
+      state: latest
+
+  - name: Add the Docker Repo Key
+    apt_key:
+      url: https://download.docker.com/linux/debian/gpg 
+      state: present
+
+  - name: Add the Docker Repo
+    apt_repository:
+      repo: deb [arch=amd64] https://download.docker.com/linux/debian   buster stable
+      state: present
+      update_cache: yes
+
+  - name: Install Docker
+    apt:
+      name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - python2.7
+        - python-docker
+      state: latest
+
+  - name: Add user to the docker group
+    user:
+      name: admin
+      append: yes
+      groups: docker
+
+  - name: Copy over the docker build for NGINX Plus 
+    copy:
+      src: docker-nginx-controller
+      dest: /home/admin/
+      mode: preserve
+
+  - name: Build the docker container
+    docker_image:
+      build:
+        path: /home/admin/docker-nginx-controller/debian/no-nap
+      name: docker-nginx-controller
+      tag: latest
+      source: build
+      buildargs:
+        CONTROLLER_URL: https://XXXXXXX/install/controller-agent 
+        API_KEY: ''
+
+  - name: Deploy NGINX container 1
+    docker_container:
+      name: nginx1
+      image: docker-nginx-controller
+      state: started
+      published_ports:
+        - 0.0.0.0:81:80
+
+  - name: Deploy NGINX container 2
+    docker_container:
+      name: nginx2
+      image: docker-nginx-controller
+      state: started
+      published_ports:
+        - 0.0.0.0:82:80
+
+  - name: Deploy NGINX container 3
+    docker_container:
+      name: nginx3
+      image: docker-nginx-controller
+      state: started
+      published_ports:
+        - 0.0.0.0:83:80
+
+  - name: Build the NGINX docker container with NAP
+    docker_image:
+      build:
+        path: /home/admin/docker-nginx-controller/debian/nap
+      name: docker-nginx-controller-nap
+      tag: latest
+      source: build
+      buildargs:
+        CONTROLLER_URL: https://ec2-34-240-34-232.eu-west-1.compute.amazonaws.com/install/controller-agent 
+        API_KEY: '297626da364063a1b7bd60953e78cdcb'
+
+  - name: Deploy NGINX container 4 (with NAP)
+    docker_container:
+      name: nginx4-nap
+      image: docker-nginx-controller-nap
+      state: started
+      published_ports:
+        - 0.0.0.0:84:80
+
