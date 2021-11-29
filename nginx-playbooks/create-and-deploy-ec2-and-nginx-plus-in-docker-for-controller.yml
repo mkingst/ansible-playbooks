@@ -160,8 +160,8 @@
       tag: latest
       source: build
       buildargs:
-        CONTROLLER_URL: https://ec2-34-240-34-232.eu-west-1.compute.amazonaws.com/install/controller-agent 
-        API_KEY: '297626da364063a1b7bd60953e78cdcb'
+        CONTROLLER_URL: https://XXXXX/install/controller-agent 
+        API_KEY: ''
 
   - name: Deploy NGINX container 4 (with NAP)
     docker_container:
