@@ -213,6 +213,8 @@
 #Official NGINX Ansible Role taken from nginxinc
 - hosts: demogroup
   remote_user: admin 
+  vars_files:
+    - keys.yml
   become: true
   roles:
     - role: nginxinc.nginx
