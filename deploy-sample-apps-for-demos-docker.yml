@@ -1,4 +1,5 @@
 ---
+# For Debian 10
 - hosts: demogroup
   remote_user: admin #user on the ec2 instance
   become: yes
@@ -213,6 +214,8 @@
 #Official NGINX Ansible Role taken from nginxinc
 - hosts: demogroup
   remote_user: admin 
+  vars_files:
+    - keys.yml
   become: true
   roles:
     - role: nginxinc.nginx
