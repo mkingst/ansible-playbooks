@@ -1,0 +1,44 @@
+#ansible-galaxy role install geerlingguy.jenkins
+- hosts: jenkins
+  remote_user: ubuntu
+  become: true
+  gather_facts: yes
+  vars:
+    jenkins_hostname: localhost
+    jenkins_admin_username: "admin" 
+    jenkins_admin_password: "ChangeMe1"
+    jenkins_http_port: "8080"
+    jenkins_plugins: 
+      - ssh-agent
+      - kubernetes-cd
+      - publish-over-ssh
+      - docker-commons
+      - docker-workflow
+      - git
+      - gradle
+      - github-api
+      - github
+      - github-branch-source
+      - ssh-credentials
+      - ssh-steps
+    jenkins_plugins_state: latest
+
+  tasks:
+    - name: Update the package cache
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+        autoclean: true
+        autoremove: true
+        upgrade: true
+
+    - name: Install Required Packages 
+      apt:
+        name:
+          - openjdk-11-jre-headless
+          - git
+        state: latest
+
+    - name: Run through the jenkins setup 
+      import_role:
+        name: geerlingguy.jenkins
